@@ -1,5 +1,6 @@
 import os
 import sqlite3
+from datetime import datetime, timedelta
 
 from flask import Flask, jsonify, request
 
@@ -8,7 +9,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Money Manager Parser API - POST .mmbak file to /parse"
+    return "Money Manager Parser API - POST .mmbak file to /parse?days=7"
 
 
 @app.route("/parse", methods=["POST", "OPTIONS"])
@@ -21,6 +22,7 @@ def parse():
         return response
 
     try:
+        days = request.args.get("days", 7, type=int)
         file_data = request.get_data()
 
         temp_path = "/tmp/money_manager.db"
@@ -31,17 +33,38 @@ def parse():
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
+        # Calculate date threshold
+        threshold_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-        result = {"success": True, "tables": tables, "data": {}}
+        # Get recent transactions
+        cursor.execute(
+            """
+            SELECT * FROM INOUTCOME
+            WHERE WDATE >= ?
+            ORDER BY WDATE DESC
+        """,
+            (threshold_date,),
+        )
+        transactions = [dict(row) for row in cursor.fetchall()]
 
-        for table_name in tables:
-            cursor.execute(f"SELECT * FROM {table_name}")
-            rows = cursor.fetchall()
-            result["data"][table_name] = [dict(row) for row in rows]
+        # Get all categories (small table)
+        cursor.execute("SELECT * FROM ZCATEGORY")
+        categories = [dict(row) for row in cursor.fetchall()]
+
+        # Get all assets (small table)
+        cursor.execute("SELECT * FROM ASSETS")
+        assets = [dict(row) for row in cursor.fetchall()]
 
         conn.close()
+
+        result = {
+            "success": True,
+            "filtered_days": days,
+            "count": len(transactions),
+            "transactions": transactions,
+            "categories": categories,
+            "assets": assets,
+        }
 
         response = jsonify(result)
         response.headers.add("Access-Control-Allow-Origin", "*")
