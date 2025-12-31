@@ -9,7 +9,7 @@ app = Flask(__name__)
 
 @app.route("/")
 def home():
-    return "Money Manager Parser API - POST .mmbak file to /parse?days=7"
+    return "Money Manager Parser API - POST .mmbak file to /parse?days=7 (use days=0 for all records)"
 
 
 @app.route("/parse", methods=["POST", "OPTIONS"])
@@ -33,18 +33,27 @@ def parse():
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
 
-        # Calculate date threshold
-        threshold_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
-
-        # Get recent transactions
-        cursor.execute(
+        # Get transactions (with optional date filter)
+        if days == 0:
+            # Get all transactions (no date filter)
+            cursor.execute(
+                """
+                SELECT * FROM INOUTCOME
+                ORDER BY WDATE DESC
             """
-            SELECT * FROM INOUTCOME
-            WHERE WDATE >= ?
-            ORDER BY WDATE DESC
-        """,
-            (threshold_date,),
-        )
+            )
+        else:
+            # Calculate date threshold
+            threshold_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+            cursor.execute(
+                """
+                SELECT * FROM INOUTCOME
+                WHERE WDATE >= ?
+                ORDER BY WDATE DESC
+            """,
+                (threshold_date,),
+            )
+
         transactions = [dict(row) for row in cursor.fetchall()]
 
         # Get all categories (small table)
